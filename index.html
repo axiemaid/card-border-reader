@@ -111,6 +111,7 @@
   <div class="spacer"></div>
   <button onclick="exportJSON()" id="btnExportJSON" disabled>JSON</button>
   <button onclick="exportCSV()" id="btnExportCSV" disabled>CSV</button>
+  <button onclick="exportPNG()" id="btnExportPNG" disabled>🖼️ PNG</button>
 </div>
 
 <div id="main">
@@ -577,6 +578,7 @@ function updateButtons() {
   document.getElementById('btnWhiting').disabled = state.step < 2;
   document.getElementById('btnExportJSON').disabled = state.step < 4;
   document.getElementById('btnExportCSV').disabled = state.step < 4;
+  document.getElementById('btnExportPNG').disabled = state.step < 2;
 }
 
 // --- Results ---
@@ -654,6 +656,99 @@ function downloadFile(filename, content, mimeType) {
   URL.revokeObjectURL(url);
 }
 
+function exportPNG() {
+  if (!img) return;
+  // Render at full image resolution with overlays
+  const tmp = document.createElement('canvas');
+  tmp.width = img.width; tmp.height = img.height;
+  const tctx = tmp.getContext('2d');
+
+  // Draw image
+  tctx.drawImage(img, 0, 0);
+
+  // Draw whiting layer
+  if (whitingCanvas) tctx.drawImage(whitingCanvas, 0, 0);
+
+  // Draw grid lines
+  if (state.step >= 4) {
+    const g = getGridRegions();
+    if (g) {
+      const b = g.bounds;
+      tctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      tctx.lineWidth = 1; tctx.setLineDash([6, 4]);
+      tctx.beginPath();
+      tctx.moveTo(b.x1, b.top); tctx.lineTo(b.x1, b.bottom);
+      tctx.moveTo(b.x2, b.top); tctx.lineTo(b.x2, b.bottom);
+      tctx.moveTo(b.left, b.y1); tctx.lineTo(b.right, b.y1);
+      tctx.moveTo(b.left, b.y2); tctx.lineTo(b.right, b.y2);
+      tctx.stroke(); tctx.setLineDash([]);
+    }
+  }
+
+  // Helper to draw crosshair at full res
+  function drawXH(p, color, label) {
+    const sz = 8;
+    tctx.strokeStyle = color; tctx.lineWidth = 1;
+    tctx.beginPath();
+    tctx.moveTo(p.x - sz, p.y); tctx.lineTo(p.x + sz, p.y);
+    tctx.moveTo(p.x, p.y - sz); tctx.lineTo(p.x, p.y + sz);
+    tctx.stroke();
+    tctx.fillStyle = color; tctx.fillRect(p.x - 1, p.y - 1, 2, 2);
+    if (label) {
+      tctx.fillStyle = '#fff'; tctx.strokeStyle = '#000';
+      tctx.font = 'bold 11px sans-serif'; tctx.textAlign = 'center'; tctx.textBaseline = 'middle';
+      tctx.lineWidth = 3; tctx.strokeText(label, p.x, p.y - 18); tctx.fillText(label, p.x, p.y - 18);
+    }
+  }
+
+  // Draw lines and crosshairs
+  if (state.hLine) {
+    tctx.strokeStyle = '#00aaff'; tctx.lineWidth = 1.5;
+    tctx.beginPath(); tctx.moveTo(state.hLine.p1.x, state.hLine.p1.y); tctx.lineTo(state.hLine.p2.x, state.hLine.p2.y); tctx.stroke();
+    drawXH(state.hLine.p1, '#00aaff', 'L');
+    drawXH(state.hLine.p2, '#00aaff', 'R');
+  }
+  if (state.vLine) {
+    tctx.strokeStyle = '#00ff88'; tctx.lineWidth = 1.5;
+    tctx.beginPath(); tctx.moveTo(state.vLine.p1.x, state.vLine.p1.y); tctx.lineTo(state.vLine.p2.x, state.vLine.p2.y); tctx.stroke();
+    drawXH(state.vLine.p1, '#00ff88', 'T');
+    drawXH(state.vLine.p2, '#00ff88', 'B');
+  }
+  if (state.hLine && state.vLine && state.snapped) {
+    const hMid = midpoint(state.hLine.p1, state.hLine.p2);
+    const vMid = midpoint(state.vLine.p1, state.vLine.p2);
+    tctx.strokeStyle = '#ffff00'; tctx.lineWidth = 1;
+    tctx.beginPath();
+    tctx.moveTo(hMid.x - 10, vMid.y); tctx.lineTo(hMid.x + 10, vMid.y);
+    tctx.moveTo(hMid.x, vMid.y - 10); tctx.lineTo(hMid.x, vMid.y + 10);
+    tctx.stroke();
+  }
+  if (state.hBorders.length > 0) {
+    state.hBorders.forEach((p, i) => {
+      drawXH(p, '#ff4444', i === 0 ? 'LB' : 'RB');
+      const edge = i === 0 ? state.hLine.p1 : state.hLine.p2;
+      tctx.strokeStyle = 'rgba(255,68,68,0.4)'; tctx.lineWidth = 4;
+      tctx.beginPath(); tctx.moveTo(edge.x, edge.y); tctx.lineTo(p.x, p.y); tctx.stroke();
+    });
+  }
+  if (state.vBorders.length > 0) {
+    state.vBorders.forEach((p, i) => {
+      drawXH(p, '#ff44ff', i === 0 ? 'TB' : 'BB');
+      const edge = i === 0 ? state.vLine.p1 : state.vLine.p2;
+      tctx.strokeStyle = 'rgba(255,68,255,0.4)'; tctx.lineWidth = 4;
+      tctx.beginPath(); tctx.moveTo(edge.x, edge.y); tctx.lineTo(p.x, p.y); tctx.stroke();
+    });
+  }
+
+  const fn = (document.getElementById('fileLabel').textContent || 'card').replace(/\.[^.]+$/, '') + '_measured.png';
+  tmp.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = fn;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+}
+
 function exportJSON() {
   const data = getExportData(); if (!data) return;
   downloadFile((data.image.filename || 'card').replace(/\.[^.]+$/, '') + '_centering.json', JSON.stringify(data, null, 2), 'application/json');
@@ -719,7 +814,9 @@ function resetMeasurements() {
   document.getElementById('results').classList.add('hidden');
   document.getElementById('btnExportJSON').disabled = true;
   document.getElementById('btnExportCSV').disabled = true;
+  document.getElementById('btnExportPNG').disabled = true;
   document.getElementById('btnWhiting').disabled = true;
+}
   if (whitingMode) toggleWhiting();
   updateHint('Click left edge, then right edge');
   updateStatusUI();
