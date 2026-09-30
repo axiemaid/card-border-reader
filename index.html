@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Card Centering & Whiting Tool</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a1a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+
+  #toolbar {
+    height: 48px; flex-shrink: 0;
+    background: #2a2a2a; border-bottom: 1px solid #444;
+    display: flex; align-items: center; gap: 10px; padding: 0 16px; z-index: 100; overflow: hidden;
+  }
+  #toolbar button {
+    background: #3a3a3a; color: #e0e0e0; border: 1px solid #555;
+    padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;
+  }
+  #toolbar button:hover:not(:disabled) { background: #4a4a4a; }
+  #toolbar button:disabled { opacity: 0.4; cursor: default; }
+  #toolbar button.active { background: #cc4400; border-color: #ff6600; }
+  #toolbar .sep { width: 1px; height: 28px; background: #444; flex-shrink: 0; }
+  #toolbar .info { font-size: 12px; color: #888; white-space: nowrap; }
+  #toolbar .spacer { flex: 1; }
+  #toolbar .brush-control { display: flex; align-items: center; gap: 6px; }
+  #toolbar input[type=range] { width: 80px; accent-color: #cc4400; }
+  #fileLabel { font-size: 12px; color: #aaa; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  #main { flex: 1; display: flex; overflow: hidden; }
+
+  #canvasWrap {
+    flex: 1; overflow: auto; background: #0d0d0d; position: relative;
+  }
+  #canvasWrap::-webkit-scrollbar { width: 14px; height: 14px; }
+  #canvasWrap::-webkit-scrollbar-track { background: #1a1a1a; }
+  #canvasWrap::-webkit-scrollbar-thumb { background: #444; border-radius: 7px; border: 2px solid #1a1a1a; }
+  #canvasWrap::-webkit-scrollbar-thumb:hover { background: #555; }
+  canvas { display: block; }
+
+  #sidebar {
+    width: 320px; flex-shrink: 0;
+    background: #222; border-left: 1px solid #444;
+    overflow-y: auto; padding: 16px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  #sidebar::-webkit-scrollbar { width: 8px; }
+  #sidebar::-webkit-scrollbar-track { background: #1a1a1a; }
+  #sidebar::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+
+  .panel {
+    background: #1a1a1a; border: 1px solid #444; border-radius: 8px; padding: 16px;
+    font-size: 14px;
+  }
+  .panel.hidden { display: none; }
+  .panel h3 { margin-bottom: 10px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+
+  .axis { margin-bottom: 12px; }
+  .axis:last-child { margin-bottom: 0; }
+  .axis-title { font-size: 12px; color: #aaa; margin-bottom: 4px; }
+  .row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .row span:first-child { color: #ccc; }
+  .row span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .offset { margin-top: 4px; padding-top: 4px; border-top: 1px solid #444; font-size: 12px; }
+  .offset.good { color: #4CAF50; }
+  .offset.warn { color: #FF9800; }
+  .offset.bad { color: #f44336; }
+
+  .step { color: #555; font-size: 13px; padding: 3px 0; }
+  .step.active { color: #00aaff; font-weight: 600; }
+  .step.done { color: #4CAF50; }
+  #hintText { margin-top: 8px; font-size: 11px; color: #888; }
+
+  .whiting-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3px; margin: 8px 0;
+  }
+  .whiting-grid .cell {
+    background: #2a2a2a; padding: 8px 4px; text-align: center; border-radius: 3px; border: 1px solid transparent;
+    font-size: 11px; min-height: 48px; display: flex; flex-direction: column; justify-content: center;
+  }
+  .whiting-grid .cell.marked { background: #3d1f0a; border-color: #ff6600; }
+  .whiting-grid .cell .clabel { color: #888; font-size: 10px; }
+  .whiting-grid .cell .cval { color: #ff8833; font-weight: 600; font-size: 12px; }
+  .whiting-grid .cell .csub { color: #666; font-size: 9px; }
+
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button onclick="document.getElementById('fileInput').click()">📁 Open</button>
+  <span id="fileLabel">No image</span>
+  <div class="sep"></div>
+  <button onclick="resetMeasurements()">↺ Reset</button>
+  <button onclick="clearAll()">Clear</button>
+  <div class="sep"></div>
+  <button onclick="zoomFit()">Fit</button>
+  <button onclick="zoomIn()">+</button>
+  <button onclick="zoomOut()">−</button>
+  <span class="info" id="zoomLevel">100%</span>
+  <div class="sep"></div>
+  <button id="btnWhiting" onclick="toggleWhiting()" disabled>✏️ Whiting</button>
+  <div class="brush-control" id="brushControl" style="display:none;">
+    <button onclick="adjustBrush(-1)" style="padding:4px 8px;">−</button>
+    <span class="info" id="brushSizeLabel">1</span>
+    <input type="range" id="brushSlider" min="1" max="60" value="1" oninput="setBrushSize(parseInt(this.value)">
+    <button onclick="adjustBrush(1)" style="padding:4px 8px;">+</button>
+    <button onclick="clearWhiting()" style="padding:4px 8px; margin-left:6px;">Clear</button>
+  </div>
+  <div class="spacer"></div>
+  <button onclick="exportJSON()" id="btnExportJSON" disabled>JSON</button>
+  <button onclick="exportCSV()" id="btnExportCSV" disabled>CSV</button>
+</div>
+
+<div id="main">
+  <div id="canvasWrap">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="sidebar">
+    <div class="panel" id="statusPanel">
+      <h3>Instructions</h3>
+      <div class="step" id="step1">1. Draw horizontal line (left edge → right edge)</div>
+      <div class="step" id="step2">2. Draw vertical line (top edge → bottom edge)</div>
+      <div class="step" id="step3">3. Mark border points on horizontal line</div>
+      <div class="step" id="step4">4. Mark border points on vertical line</div>
+      <div id="hintText">Click left edge, then right edge</div>
+    </div>
+
+    <div class="panel hidden" id="results"></div>
+
+    <div class="panel hidden" id="whitingPanel">
+      <h3>Whiting Analysis</h3>
+      <div class="whiting-grid" id="whitingGrid"></div>
+      <div class="row"><span>Total whiting</span><span id="whitingTotal">0.00%</span></div>
+      <div class="row"><span>Marked regions</span><span id="whitingRegions">—</span></div>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*">
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const canvasWrap = document.getElementById('canvasWrap');
+
+let img = null;
+let scale = 1;
+
+let state = {
+  hLine: null, vLine: null, hBorders: [], vBorders: [],
+  step: 0, snapped: false
+};
+
+let previewLine = null;
+let previewColor = '#00aaff';
+let dragTarget = null;
+let hoverTarget = null;
+let mousePos = null;
+
+let whitingCanvas = null;
+let whitingCtx = null;
+let whitingMode = false;
+let isWhitingDrawing = false;
+let lastWhitingPoint = null;
+let brushSize = 1;
+
+function setBrushSize(v) {
+  brushSize = Math.max(1, Math.min(60, v));
+  document.getElementById('brushSlider').value = brushSize;
+  document.getElementById('brushSizeLabel').textContent = brushSize;
+  render();
+}
+function adjustBrush(delta) {
+  setBrushSize(brushSize + delta);
+}
+
+// --- Canvas sizing ---
+function resizeCanvas() {
+  if (img) {
+    canvas.width = img.width * scale;
+    canvas.height = img.height * scale;
+  } else {
+    canvas.width = canvasWrap.clientWidth;
+    canvas.height = canvasWrap.clientHeight;
+  }
+  render();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function imgToCanvas(x, y) { return { x: x * scale, y: y * scale }; }
+function canvasToImg(x, y) { return { x: x / scale, y: y / scale }; }
+
+// --- Render ---
+function render() {
+  ctx.fillStyle = '#0d0d0d';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (!img) { drawPlaceholder(); return; }
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  if (whitingCanvas) ctx.drawImage(whitingCanvas, 0, 0, canvas.width, canvas.height);
+  drawOverlays();
+  if (whitingMode && mousePos && img) {
+    const s = imgToCanvas(mousePos.x, mousePos.y);
+    ctx.strokeStyle = 'rgba(255,120,50,0.7)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, brushSize * scale / 2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function drawPlaceholder() {
+  ctx.fillStyle = '#555'; ctx.font = '18px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Open an image to begin', canvas.width / 2, canvas.height / 2);
+}
+
+function drawOverlays() {
+  if (state.hLine) {
+    const a = imgToCanvas(state.hLine.p1.x, state.hLine.p1.y);
+    const b = imgToCanvas(state.hLine.p2.x, state.hLine.p2.y);
+    drawLine(a, b, '#00aaff', 1.5);
+    drawCrosshair(a, '#00aaff', 'L', state.step >= 2 && !whitingMode);
+    drawCrosshair(b, '#00aaff', 'R', state.step >= 2 && !whitingMode);
+  }
+  if (state.vLine) {
+    const a = imgToCanvas(state.vLine.p1.x, state.vLine.p1.y);
+    const b = imgToCanvas(state.vLine.p2.x, state.vLine.p2.y);
+    drawLine(a, b, '#00ff88', 1.5);
+    drawCrosshair(a, '#00ff88', 'T', state.step >= 2 && !whitingMode);
+    drawCrosshair(b, '#00ff88', 'B', state.step >= 2 && !whitingMode);
+  }
+  if (state.hLine && state.vLine && state.snapped) {
+    const hMid = midpoint(state.hLine.p1, state.hLine.p2);
+    const vMid = midpoint(state.vLine.p1, state.vLine.p2);
+    const cs = imgToCanvas(hMid.x, vMid.y);
+    ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cs.x - 10, cs.y); ctx.lineTo(cs.x + 10, cs.y);
+    ctx.moveTo(cs.x, cs.y - 10); ctx.lineTo(cs.x, cs.y + 10);
+    ctx.stroke();
+  }
+  if (state.hBorders.length > 0) {
+    state.hBorders.forEach((p, i) => {
+      const s = imgToCanvas(p.x, p.y);
+      drawCrosshair(s, '#ff4444', i === 0 ? 'LB' : 'RB', state.step >= 4 && !whitingMode);
+      const edge = i === 0 ? state.hLine.p1 : state.hLine.p2;
+      const edgeS = imgToCanvas(edge.x, edge.y);
+      ctx.strokeStyle = 'rgba(255,68,68,0.4)'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(edgeS.x, edgeS.y); ctx.lineTo(s.x, s.y); ctx.stroke();
+    });
+  }
+  if (state.vBorders.length > 0) {
+    state.vBorders.forEach((p, i) => {
+      const s = imgToCanvas(p.x, p.y);
+      drawCrosshair(s, '#ff44ff', i === 0 ? 'TB' : 'BB', state.step >= 4 && !whitingMode);
+      const edge = i === 0 ? state.vLine.p1 : state.vLine.p2;
+      const edgeS = imgToCanvas(edge.x, edge.y);
+      ctx.strokeStyle = 'rgba(255,68,255,0.4)'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(edgeS.x, edgeS.y); ctx.lineTo(s.x, s.y); ctx.stroke();
+    });
+  }
+  if (state.step >= 4) drawGridLines();
+  if (previewLine) {
+    const a = imgToCanvas(previewLine.p1.x, previewLine.p1.y);
+    const b = imgToCanvas(previewLine.p2.x, previewLine.p2.y);
+    drawLine(a, b, previewColor, 1, [4, 4]);
+    drawCrosshair(a, previewColor, null, false);
+  }
+  if (hoverTarget && !whitingMode) {
+    const p = imgToCanvas(hoverTarget.pt.x, hoverTarget.pt.y);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
+function drawLine(a, b, color, width, dash) {
+  ctx.strokeStyle = color; ctx.lineWidth = width || 1.5;
+  if (dash) ctx.setLineDash(dash); else ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawCrosshair(p, color, label, draggable) {
+  const size = 8;
+  ctx.strokeStyle = color; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(p.x - size, p.y); ctx.lineTo(p.x + size, p.y);
+  ctx.moveTo(p.x, p.y - size); ctx.lineTo(p.x, p.y + size);
+  ctx.stroke();
+  ctx.fillStyle = color; ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
+  if (draggable) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 14, 0, Math.PI * 2); ctx.stroke();
+  }
+  if (label) {
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#000';
+    ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3; ctx.strokeText(label, p.x, p.y - 18); ctx.fillText(label, p.x, p.y - 18);
+  }
+}
+
+// --- Geometry ---
+function midpoint(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+function dist(a, b) { return Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2); }
+function pointOnLineNear(p1, p2, t) {
+  const dx = p2.x - p1.x, dy = p2.y - p1.y, lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return { x: p1.x, y: p1.y, t: 0 };
+  let s = ((t.x - p1.x) * dx + (t.y - p1.y) * dy) / lenSq;
+  s = Math.max(0, Math.min(1, s));
+  return { x: p1.x + s * dx, y: p1.y + s * dy, t: s };
+}
+
+function snapLines() {
+  const hMid = midpoint(state.hLine.p1, state.hLine.p2);
+  const vMid = midpoint(state.vLine.p1, state.vLine.p2);
+  state.hLine.p1.y += vMid.y - hMid.y; state.hLine.p2.y += vMid.y - hMid.y;
+  state.vLine.p1.x += hMid.x - vMid.x; state.vLine.p2.x += hMid.x - vMid.x;
+  state.snapped = true;
+}
+function resnap(line) {
+  if (!state.snapped) return;
+  const hMid = midpoint(state.hLine.p1, state.hLine.p2);
+  const vMid = midpoint(state.vLine.p1, state.vLine.p2);
+  if (line === 'h') { const dx = hMid.x - vMid.x; state.vLine.p1.x += dx; state.vLine.p2.x += dx; }
+  else { const dy = vMid.y - hMid.y; state.hLine.p1.y += dy; state.hLine.p2.y += dy; }
+  reprojectBorders();
+}
+function reprojectBorders() {
+  if (state.hBorders.length === 2) { state.hBorders = state.hBorders.map(p => { const n = pointOnLineNear(state.hLine.p1, state.hLine.p2, p); return { x: n.x, y: n.y }; }); state.hBorders.sort((a, b) => dist(state.hLine.p1, a) - dist(state.hLine.p1, b)); }
+  if (state.vBorders.length === 2) { state.vBorders = state.vBorders.map(p => { const n = pointOnLineNear(state.vLine.p1, state.vLine.p2, p); return { x: n.x, y: n.y }; }); state.vBorders.sort((a, b) => dist(state.vLine.p1, a) - dist(state.vLine.p1, b)); }
+}
+
+function hitTest(pt) {
+  const th = 12 / scale; const c = [];
+  if (state.hLine) { c.push({ pt: state.hLine.p1, line: 'h', end: 1, isBorder: false }); c.push({ pt: state.hLine.p2, line: 'h', end: 2, isBorder: false }); }
+  if (state.vLine) { c.push({ pt: state.vLine.p1, line: 'v', end: 1, isBorder: false }); c.push({ pt: state.vLine.p2, line: 'v', end: 2, isBorder: false }); }
+  state.hBorders.forEach((p, i) => c.push({ pt: p, line: 'h', isBorder: true, idx: i }));
+  state.vBorders.forEach((p, i) => c.push({ pt: p, line: 'v', isBorder: true, idx: i }));
+  for (const t of c) if (dist(pt, t.pt) < th) return t;
+  return null;
+}
+
+// --- Mouse ---
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button !== 0 || !img) return;
+  const rect = canvas.getBoundingClientRect();
+  const p = canvasToImg(e.clientX - rect.left, e.clientY - rect.top);
+  if (whitingMode && state.step >= 2) {
+    isWhitingDrawing = true; lastWhitingPoint = p; drawWhitingDot(p); render(); return;
+  }
+  if (state.step >= 2) { const hit = hitTest(p); if (hit) { dragTarget = hit; canvas.style.cursor = 'grabbing'; return; } }
+  handlePlacePoint(p);
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const p = canvasToImg(e.clientX - rect.left, e.clientY - rect.top);
+  mousePos = p;
+  if (isWhitingDrawing) { drawWhitingLine(lastWhitingPoint, p); lastWhitingPoint = p; render(); return; }
+  if (dragTarget) {
+    if (dragTarget.isBorder) {
+      if (dragTarget.line === 'h') { const n = pointOnLineNear(state.hLine.p1, state.hLine.p2, p); state.hBorders[dragTarget.idx] = { x: n.x, y: n.y }; state.hBorders.sort((a, b) => dist(state.hLine.p1, a) - dist(state.hLine.p1, b)); }
+      else { const n = pointOnLineNear(state.vLine.p1, state.vLine.p2, p); state.vBorders[dragTarget.idx] = { x: n.x, y: n.y }; state.vBorders.sort((a, b) => dist(state.vLine.p1, a) - dist(state.vLine.p1, b)); }
+    } else {
+      if (dragTarget.line === 'h') { if (dragTarget.end === 1) state.hLine.p1 = { x: p.x, y: state.hLine.p1.y }; else state.hLine.p2 = { x: p.x, y: state.hLine.p2.y }; resnap('h'); }
+      else { if (dragTarget.end === 1) state.vLine.p1 = { x: state.vLine.p1.x, y: p.y }; else state.vLine.p2 = { x: state.vLine.p2.x, y: p.y }; resnap('v'); }
+      if (state.step >= 4) computeResults();
+    }
+    render(); return;
+  }
+  if (state.step >= 2 && !whitingMode) { const hit = hitTest(p); if (hit !== hoverTarget) { hoverTarget = hit; canvas.style.cursor = hit ? 'grab' : 'crosshair'; render(); } }
+  if (previewLine) { if (state.step === 0) previewLine.p2 = { x: p.x, y: previewLine.p1.y }; else if (state.step === 1) previewLine.p2 = { x: previewLine.p1.x, y: p.y }; render(); }
+  if (whitingMode) render();
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (isWhitingDrawing) { isWhitingDrawing = false; analyzeWhiting(); return; }
+  if (dragTarget) { dragTarget = null; canvas.style.cursor = hoverTarget ? 'grab' : 'crosshair'; if (state.step >= 4) computeResults(); }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  if (isWhitingDrawing) { isWhitingDrawing = false; analyzeWhiting(); }
+  if (dragTarget) { dragTarget = null; canvas.style.cursor = 'crosshair'; }
+  hoverTarget = null; mousePos = null; render();
+});
+
+function handlePlacePoint(p) {
+  if (state.step === 0) {
+    previewLine = { p1: p, p2: p }; previewColor = '#00aaff'; state.step = 0.5;
+    updateHint('Click right edge to complete horizontal line'); render();
+  } else if (state.step === 0.5) {
+    state.hLine = { p1: previewLine.p1, p2: { x: p.x, y: previewLine.p1.y } }; previewLine = null; state.step = 1;
+    updateHint('Click top edge, then bottom edge for vertical line'); updateStatusUI(); render();
+  } else if (state.step === 1) {
+    const hMid = midpoint(state.hLine.p1, state.hLine.p2);
+    previewLine = { p1: { x: hMid.x, y: p.y }, p2: { x: hMid.x, y: p.y } }; previewColor = '#00ff88'; state.step = 1.5;
+    updateHint('Click bottom edge to complete vertical line'); render();
+  } else if (state.step === 1.5) {
+    state.vLine = { p1: previewLine.p1, p2: { x: previewLine.p1.x, y: p.y } }; previewLine = null; state.step = 2;
+    snapLines(); updateHint('Mark left border, then right border on the blue line'); updateStatusUI(); updateButtons(); render();
+  } else if (state.step === 2) {
+    const n = pointOnLineNear(state.hLine.p1, state.hLine.p2, p); state.hBorders.push({ x: n.x, y: n.y });
+    if (state.hBorders.length === 2) { state.hBorders.sort((a, b) => dist(state.hLine.p1, a) - dist(state.hLine.p1, b)); state.step = 3; updateHint('Mark top border, then bottom border on the green line'); updateStatusUI(); }
+    else updateHint('Now mark the right border on the blue line');
+    render();
+  } else if (state.step === 3) {
+    const n = pointOnLineNear(state.vLine.p1, state.vLine.p2, p); state.vBorders.push({ x: n.x, y: n.y });
+    if (state.vBorders.length === 2) { state.vBorders.sort((a, b) => dist(state.vLine.p1, a) - dist(state.vLine.p1, b)); state.step = 4; updateHint('Done! Drag to adjust, or mark whiting.'); updateStatusUI(); updateButtons(); computeResults(); }
+    render();
+  }
+}
+
+// --- Whiting ---
+function initWhitingCanvas() {
+  if (!img) return;
+  whitingCanvas = document.createElement('canvas');
+  whitingCanvas.width = img.width; whitingCanvas.height = img.height;
+  whitingCtx = whitingCanvas.getContext('2d');
+}
+
+function toggleWhiting() {
+  if (state.step < 2) return;
+  whitingMode = !whitingMode;
+  document.getElementById('btnWhiting').classList.toggle('active', whitingMode);
+  document.getElementById('brushControl').style.display = whitingMode ? 'flex' : 'none';
+  canvas.style.cursor = whitingMode ? 'none' : 'crosshair';
+  render();
+}
+
+function drawWhitingDot(p) {
+  whitingCtx.fillStyle = 'rgba(255,100,30,0.4)';
+  whitingCtx.beginPath(); whitingCtx.arc(p.x, p.y, brushSize / 2, 0, Math.PI * 2); whitingCtx.fill();
+}
+function drawWhitingLine(from, to) {
+  whitingCtx.strokeStyle = 'rgba(255,100,30,0.4)'; whitingCtx.lineWidth = brushSize;
+  whitingCtx.lineCap = 'round'; whitingCtx.lineJoin = 'round';
+  whitingCtx.beginPath(); whitingCtx.moveTo(from.x, from.y); whitingCtx.lineTo(to.x, to.y); whitingCtx.stroke();
+}
+function clearWhiting() {
+  if (!whitingCtx) return;
+  whitingCtx.clearRect(0, 0, whitingCanvas.width, whitingCanvas.height);
+  document.getElementById('whitingPanel').classList.add('hidden');
+  render();
+}
+
+function getCardRect() {
+  if (!state.hLine || !state.vLine) return null;
+  return {
+    left: Math.min(state.hLine.p1.x, state.hLine.p2.x),
+    right: Math.max(state.hLine.p1.x, state.hLine.p2.x),
+    top: Math.min(state.vLine.p1.y, state.vLine.p2.y),
+    bottom: Math.max(state.vLine.p1.y, state.vLine.p2.y),
+  };
+}
+
+function getGridRegions() {
+  if (!state.hLine || !state.vLine || !state.hBorders.length || !state.vBorders.length) return null;
+  const r = getCardRect();
+  const leftBW = dist(state.hLine.p1, state.hBorders[0]);
+  const rightBW = dist(state.hLine.p2, state.hBorders[1]);
+  const topBW = dist(state.vLine.p1, state.vBorders[0]);
+  const bottomBW = dist(state.vLine.p2, state.vBorders[1]);
+  const x1 = r.left + leftBW, x2 = r.right - rightBW;
+  const y1 = r.top + topBW, y2 = r.bottom - bottomBW;
+  const regions = [
+    { label: 'TL', x0: r.left, x1: x1, y0: r.top, y1: y1 },
+    { label: 'T',  x0: x1, x1: x2, y0: r.top, y1: y1 },
+    { label: 'TR', x0: x2, x1: r.right, y0: r.top, y1: y1 },
+    { label: 'L',  x0: r.left, x1: x1, y0: y1, y1: y2 },
+    { label: 'C',  x0: x1, x1: x2, y0: y1, y1: y2 },
+    { label: 'R',  x0: x2, x1: r.right, y0: y1, y1: y2 },
+    { label: 'BL', x0: r.left, x1: x1, y0: y2, y1: r.bottom },
+    { label: 'B',  x0: x1, x1: x2, y0: y2, y1: r.bottom },
+    { label: 'BR', x0: x2, x1: r.right, y0: y2, y1: r.bottom },
+  ];
+  const areas = {};
+  regions.forEach(reg => { areas[reg.label] = (reg.x1 - reg.x0) * (reg.y1 - reg.y0); });
+  return { regions, areas, bounds: { x1, x2, y1, y2, left: r.left, right: r.right, top: r.top, bottom: r.bottom } };
+}
+
+function drawGridLines() {
+  const g = getGridRegions(); if (!g) return;
+  const b = g.bounds;
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 4]);
+  const x1s = imgToCanvas(b.x1, 0), x2s = imgToCanvas(b.x2, 0);
+  const topS = imgToCanvas(0, b.top), botS = imgToCanvas(0, b.bottom);
+  ctx.beginPath();
+  ctx.moveTo(x1s.x, topS.y); ctx.lineTo(x1s.x, botS.y);
+  ctx.moveTo(x2s.x, topS.y); ctx.lineTo(x2s.x, botS.y);
+  const y1s = imgToCanvas(0, b.y1), y2s = imgToCanvas(0, b.y2);
+  const leftS = imgToCanvas(b.left, 0), rightS = imgToCanvas(b.right, 0);
+  ctx.beginPath();
+  ctx.moveTo(leftS.x, y1s.y); ctx.lineTo(rightS.x, y1s.y);
+  ctx.moveTo(leftS.x, y2s.y); ctx.lineTo(rightS.x, y2s.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function analyzeWhiting() {
+  if (!whitingCanvas || !state.hLine || !state.vLine) return;
+  const g = getGridRegions(); if (!g) return;
+  const cardRect = getCardRect();
+  const cardArea = (cardRect.right - cardRect.left) * (cardRect.bottom - cardRect.top);
+  if (cardArea <= 0) return;
+  const step = Math.max(1, Math.floor(Math.sqrt(cardArea) / 500));
+  const data = whitingCtx.getImageData(0, 0, whitingCanvas.width, whitingCanvas.height).data;
+  const result = {}; let totalPx = 0;
+  for (const reg of g.regions) {
+    let count = 0;
+    for (let y = Math.floor(reg.y0); y < reg.y1; y += step) {
+      for (let x = Math.floor(reg.x0); x < reg.x1; x += step) {
+        const idx = (y * whitingCanvas.width + x) * 4;
+        if (data[idx + 3] > 10) count++;
+      }
+    }
+    const px = count * step * step;
+    if (px > 0) { result[reg.label] = { pixels: Math.round(px), pctOfCard: px / cardArea * 100, pctOfRegion: px / g.areas[reg.label] * 100 }; totalPx += px; }
+  }
+  displayWhiting(result, totalPx, cardArea);
+}
+
+function displayWhiting(result, totalPx, cardArea) {
+  const panel = document.getElementById('whitingPanel');
+  const grid = document.getElementById('whitingGrid');
+  const labels = [['TL','T','TR'],['L','C','R'],['BL','B','BR']];
+  let html = '';
+  for (const row of labels) {
+    for (const label of row) {
+      const r = result[label];
+      const marked = r ? 'marked' : '';
+      const val = r ? r.pctOfRegion.toFixed(1) + '%' : '—';
+      const sub = r ? r.pctOfCard.toFixed(2) + '% card' : '';
+      html += `<div class="cell ${marked}"><span class="clabel">${label}</span><span class="cval">${val}</span><span class="csub">${sub}</span></div>`;
+    }
+  }
+  grid.innerHTML = html;
+  document.getElementById('whitingTotal').textContent = (totalPx / cardArea * 100).toFixed(2) + '%';
+  const markedList = Object.keys(result).filter(l => l !== 'C');
+  document.getElementById('whitingRegions').textContent = markedList.length ? markedList.join(', ') : '—';
+  panel.classList.remove('hidden');
+}
+
+// --- Zoom ---
+canvasWrap.addEventListener('wheel', (e) => {
+  if (!img) return;
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const oldScale = scale;
+  const delta = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  const newScale = Math.max(0.05, Math.min(30, scale * delta));
+  const factor = newScale / oldScale;
+  canvasWrap.scrollLeft = (canvasWrap.scrollLeft + mx) * factor - mx;
+  canvasWrap.scrollTop = (canvasWrap.scrollTop + my) * factor - my;
+  scale = newScale;
+  canvas.width = img.width * scale; canvas.height = img.height * scale;
+  document.getElementById('zoomLevel').textContent = Math.round(scale * 100) + '%';
+  render();
+}, { passive: false });
+
+// --- Status ---
+function updateHint(hint) { document.getElementById('hintText').textContent = hint; }
+function updateStatusUI() {
+  const steps = ['step1','step2','step3','step4'];
+  const idx = Math.floor(state.step);
+  steps.forEach((id, i) => {
+    const el = document.getElementById(id);
+    el.className = 'step';
+    if (i < idx) el.classList.add('done'); else if (i === idx) el.classList.add('active');
+  });
+}
+function updateButtons() {
+  document.getElementById('btnWhiting').disabled = state.step < 2;
+  document.getElementById('btnExportJSON').disabled = state.step < 4;
+  document.getElementById('btnExportCSV').disabled = state.step < 4;
+}
+
+// --- Results ---
+function computeResults() {
+  if (!state.hLine || !state.vLine || state.hBorders.length < 2 || state.vBorders.length < 2) return;
+  const hTotal = dist(state.hLine.p1, state.hLine.p2);
+  const lb = dist(state.hLine.p1, state.hBorders[0]), rb = dist(state.hLine.p2, state.hBorders[1]);
+  const lp = lb / hTotal * 100, rp = rb / hTotal * 100, ho = Math.abs(lp - rp) / 2;
+  const vTotal = dist(state.vLine.p1, state.vLine.p2);
+  const tb = dist(state.vLine.p1, state.vBorders[0]), bb = dist(state.vLine.p2, state.vBorders[1]);
+  const tp = tb / vTotal * 100, bp = bb / vTotal * 100, vo = Math.abs(tp - bp) / 2;
+  const results = document.getElementById('results');
+  const hd = lp > rp ? 'shifted right' : 'shifted left', vd = tp > bp ? 'shifted down' : 'shifted up';
+  const hc = ho < 1 ? 'good' : ho < 3 ? 'warn' : 'bad', vc = vo < 1 ? 'good' : vo < 3 ? 'warn' : 'bad';
+  results.innerHTML = `<h3>Centering Results</h3>
+    <div class="axis"><div class="axis-title">Horizontal (L ↔ R)</div>
+    <div class="row"><span>Left</span><span>${lp.toFixed(2)}%</span></div>
+    <div class="row"><span>Right</span><span>${rp.toFixed(2)}%</span></div>
+    <div class="offset ${hc}">Offset: ${ho.toFixed(2)}% (${hd})</div></div>
+    <div class="axis"><div class="axis-title">Vertical (T ↕ B)</div>
+    <div class="row"><span>Top</span><span>${tp.toFixed(2)}%</span></div>
+    <div class="row"><span>Bottom</span><span>${bp.toFixed(2)}%</span></div>
+    <div class="offset ${vc}">Offset: ${vo.toFixed(2)}% (${vd})</div></div>`;
+  results.classList.remove('hidden');
+}
+
+// --- Export ---
+function getExportData() {
+  if (!state.hLine || !state.vLine || state.hBorders.length < 2 || state.vBorders.length < 2) return null;
+  const hTotal = dist(state.hLine.p1, state.hLine.p2);
+  const vTotal = dist(state.vLine.p1, state.vLine.p2);
+  const lbPx = dist(state.hLine.p1, state.hBorders[0]), rbPx = dist(state.hLine.p2, state.hBorders[1]);
+  const tbPx = dist(state.vLine.p1, state.vBorders[0]), bbPx = dist(state.vLine.p2, state.vBorders[1]);
+  const data = {
+    image: { filename: document.getElementById('fileLabel').textContent, width: img ? img.width : null, height: img ? img.height : null },
+    raw: {
+      horizontal: { leftEdge: { x: state.hLine.p1.x, y: state.hLine.p1.y }, rightEdge: { x: state.hLine.p2.x, y: state.hLine.p2.y }, leftBorder: { x: state.hBorders[0].x, y: state.hBorders[0].y }, rightBorder: { x: state.hBorders[1].x, y: state.hBorders[1].y }, axisLength_px: hTotal, leftBorder_px: lbPx, rightBorder_px: rbPx },
+      vertical: { topEdge: { x: state.vLine.p1.x, y: state.vLine.p1.y }, bottomEdge: { x: state.vLine.p2.x, y: state.vLine.p2.y }, topBorder: { x: state.vBorders[0].x, y: state.vBorders[0].y }, bottomBorder: { x: state.vBorders[1].x, y: state.vBorders[1].y }, axisLength_px: vTotal, topBorder_px: tbPx, bottomBorder_px: bbPx },
+    },
+    calculated: {
+      horizontal: { left_pct: lbPx / hTotal * 100, right_pct: rbPx / hTotal * 100, offset_pct: Math.abs(lbPx / hTotal * 100 - rbPx / hTotal * 100) / 2, direction: lbPx / hTotal * 100 > rbPx / hTotal * 100 ? 'shifted right' : 'shifted left' },
+      vertical: { top_pct: tbPx / vTotal * 100, bottom_pct: bbPx / vTotal * 100, offset_pct: Math.abs(tbPx / vTotal * 100 - bbPx / vTotal * 100) / 2, direction: tbPx / vTotal * 100 > bbPx / vTotal * 100 ? 'shifted down' : 'shifted up' },
+    },
+    timestamp: new Date().toISOString(),
+  };
+  if (whitingCanvas && state.hBorders.length >= 2 && state.vBorders.length >= 2) {
+    const g = getGridRegions();
+    if (g) {
+      const cardRect = getCardRect();
+      const cardArea = (cardRect.right - cardRect.left) * (cardRect.bottom - cardRect.top);
+      const step = Math.max(1, Math.floor(Math.sqrt(cardArea) / 500));
+      const pxData = whitingCtx.getImageData(0, 0, whitingCanvas.width, whitingCanvas.height).data;
+      const whiting = { totalPixels: 0, totalPctOfCard: 0, regions: {} };
+      let totalPx = 0;
+      for (const reg of g.regions) {
+        let count = 0;
+        for (let y = Math.floor(reg.y0); y < reg.y1; y += step) { for (let x = Math.floor(reg.x0); x < reg.x1; x += step) { const idx = (y * whitingCanvas.width + x) * 4; if (pxData[idx + 3] > 10) count++; } }
+        const px = count * step * step;
+        if (px > 0) whiting.regions[reg.label] = { pixels: Math.round(px), pctOfCard: px / cardArea * 100, pctOfRegion: px / g.areas[reg.label] * 100 };
+        totalPx += px;
+      }
+      whiting.totalPixels = Math.round(totalPx);
+      whiting.totalPctOfCard = totalPx / cardArea * 100;
+      data.whiting = whiting;
+    }
+  }
+  return data;
+}
+
+function downloadFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportJSON() {
+  const data = getExportData(); if (!data) return;
+  downloadFile((data.image.filename || 'card').replace(/\.[^.]+$/, '') + '_centering.json', JSON.stringify(data, null, 2), 'application/json');
+}
+
+function exportCSV() {
+  const data = getExportData(); if (!data) return;
+  const base = (data.image.filename || 'card').replace(/\.[^.]+$/, '');
+  let csv = 'Card Centering & Whiting Measurements\n';
+  csv += `Image,${data.image.filename}\nImage Width (px),${data.image.width}\nImage Height (px),${data.image.height}\nTimestamp,${data.timestamp}\n\n`;
+  csv += 'RAW DATA (pixel coordinates)\nAxis,Point,X,Y,Distance (px)\n';
+  csv += `Horizontal,Left Edge,${data.raw.horizontal.leftEdge.x},${data.raw.horizontal.leftEdge.y},\n`;
+  csv += `Horizontal,Right Edge,${data.raw.horizontal.rightEdge.x},${data.raw.horizontal.rightEdge.y},${data.raw.horizontal.axisLength_px}\n`;
+  csv += `Horizontal,Left Border,${data.raw.horizontal.leftBorder.x},${data.raw.horizontal.leftBorder.y},${data.raw.horizontal.leftBorder_px}\n`;
+  csv += `Horizontal,Right Border,${data.raw.horizontal.rightBorder.x},${data.raw.horizontal.rightBorder.y},${data.raw.horizontal.rightBorder_px}\n`;
+  csv += `Vertical,Top Edge,${data.raw.vertical.topEdge.x},${data.raw.vertical.topEdge.y},\n`;
+  csv += `Vertical,Bottom Edge,${data.raw.vertical.bottomEdge.x},${data.raw.vertical.bottomEdge.y},${data.raw.vertical.axisLength_px}\n`;
+  csv += `Vertical,Top Border,${data.raw.vertical.topBorder.x},${data.raw.vertical.topBorder.y},${data.raw.vertical.topBorder_px}\n`;
+  csv += `Vertical,Bottom Border,${data.raw.vertical.bottomBorder.x},${data.raw.vertical.bottomBorder.y},${data.raw.vertical.bottomBorder_px}\n\n`;
+  csv += 'CALCULATED DATA\nAxis,Side,Border Width (%),Offset (%),Direction\n';
+  csv += `Horizontal,Left,${data.calculated.horizontal.left_pct.toFixed(2)},${data.calculated.horizontal.offset_pct.toFixed(2)},${data.calculated.horizontal.direction}\n`;
+  csv += `Horizontal,Right,${data.calculated.horizontal.right_pct.toFixed(2)},,\n`;
+  csv += `Vertical,Top,${data.calculated.vertical.top_pct.toFixed(2)},${data.calculated.vertical.offset_pct.toFixed(2)},${data.calculated.vertical.direction}\n`;
+  csv += `Vertical,Bottom,${data.calculated.vertical.bottom_pct.toFixed(2)},,\n\n`;
+  if (data.whiting) {
+    csv += 'WHITING DATA\nRegion,Pixels,% of Card,% of Region\n';
+    const labels = ['TL','T','TR','L','C','R','BL','B','BR'];
+    for (const label of labels) { const r = data.whiting.regions[label]; if (r) csv += `${label},${r.pixels},${r.pctOfCard.toFixed(2)},${r.pctOfRegion.toFixed(2)}\n`; }
+    csv += `Total,${data.whiting.totalPixels},${data.whiting.totalPctOfCard.toFixed(2)},\n`;
+  }
+  downloadFile(base + '_measurements.csv', csv, 'text/csv');
+}
+
+// --- File ---
+document.getElementById('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  document.getElementById('fileLabel').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const newImg = new Image();
+    newImg.onload = () => { img = newImg; initWhitingCanvas(); zoomFit(); resetMeasurements(); };
+    newImg.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+function zoomFit() {
+  if (!img) return;
+  const sx = canvasWrap.clientWidth / img.width, sy = canvasWrap.clientHeight / img.height;
+  scale = Math.min(sx, sy) * 0.9;
+  canvas.width = img.width * scale; canvas.height = img.height * scale;
+  canvasWrap.scrollLeft = (canvas.width - canvasWrap.clientWidth) / 2;
+  canvasWrap.scrollTop = (canvas.height - canvasWrap.clientHeight) / 2;
+  document.getElementById('zoomLevel').textContent = Math.round(scale * 100) + '%';
+  render();
+}
+function zoomIn() { if (!img) return; scale = Math.min(30, scale * 1.3); canvas.width = img.width * scale; canvas.height = img.height * scale; document.getElementById('zoomLevel').textContent = Math.round(scale * 100) + '%'; render(); }
+function zoomOut() { if (!img) return; scale = Math.max(0.05, scale / 1.3); canvas.width = img.width * scale; canvas.height = img.height * scale; document.getElementById('zoomLevel').textContent = Math.round(scale * 100) + '%'; render(); }
+
+function resetMeasurements() {
+  state = { hLine: null, vLine: null, hBorders: [], vBorders: [], step: 0, snapped: false };
+  previewLine = null; dragTarget = null; hoverTarget = null;
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('btnExportJSON').disabled = true;
+  document.getElementById('btnExportCSV').disabled = true;
+  document.getElementById('btnWhiting').disabled = true;
+  if (whitingMode) toggleWhiting();
+  updateHint('Click left edge, then right edge');
+  updateStatusUI();
+  render();
+}
+
+function clearAll() {
+  resetMeasurements();
+  if (whitingCtx) whitingCtx.clearRect(0, 0, whitingCanvas.width, whitingCanvas.height);
+  document.getElementById('whitingPanel').classList.add('hidden');
+  img = null;
+  document.getElementById('fileLabel').textContent = 'No image';
+  resizeCanvas();
+}
+
+resizeCanvas();
+updateStatusUI();
+</script>
+</body>
+</html>
