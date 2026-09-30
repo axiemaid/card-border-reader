@@ -30,7 +30,7 @@
   #main { flex: 1; display: flex; overflow: hidden; }
 
   #canvasWrap {
-    flex: 1; overflow: auto; background: #0d0d0d; position: relative;
+    flex: 1; min-width: 0; min-height: 0; overflow: auto; background: #0d0d0d; position: relative;
   }
   #canvasWrap::-webkit-scrollbar { width: 14px; height: 14px; }
   #canvasWrap::-webkit-scrollbar-track { background: #1a1a1a; }
@@ -789,7 +789,7 @@ document.getElementById('fileInput').addEventListener('change', (e) => {
   const reader = new FileReader();
   reader.onload = (ev) => {
     const newImg = new Image();
-    newImg.onload = () => { img = newImg; initWhitingCanvas(); zoomFit(); resetMeasurements(); };
+    newImg.onload = () => { img = newImg; initWhitingCanvas(); requestAnimationFrame(() => { zoomFit(); resetMeasurements(); }); };
     newImg.src = ev.target.result;
   };
   reader.readAsDataURL(file);
@@ -833,7 +833,7 @@ function clearAll() {
 }
 
 resizeCanvas();
-updateStatusUI();
+requestAnimationFrame(() => { resizeCanvas(); updateStatusUI(); });
 </script>
 </body>
 </html>
