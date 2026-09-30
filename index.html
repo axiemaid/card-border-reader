@@ -103,10 +103,11 @@
   <button id="btnWhiting" onclick="toggleWhiting()" disabled>✏️ Whiting</button>
   <div class="brush-control" id="brushControl" style="display:none;">
     <button onclick="adjustBrush(-1)" style="padding:4px 8px;">−</button>
-    <span class="info" id="brushSizeLabel">1</span>
-    <input type="range" id="brushSlider" min="1" max="60" value="1" oninput="setBrushSize(parseInt(this.value))">
+    <span class="info" id="brushSizeLabel">2</span>
+    <input type="range" id="brushSlider" min="1" max="60" value="2" oninput="setBrushSize(parseInt(this.value))">
     <button onclick="adjustBrush(1)" style="padding:4px 8px;">+</button>
-    <button onclick="clearWhiting()" style="padding:4px 8px; margin-left:6px;">Clear</button>
+    <button onclick="undoWhiting()" style="padding:4px 8px; margin-left:6px;">Undo</button>
+    <button onclick="clearWhiting()" style="padding:4px 8px;">Clear</button>
   </div>
   <div class="spacer"></div>
   <button onclick="exportJSON()" id="btnExportJSON" disabled>JSON</button>
@@ -166,7 +167,8 @@ let whitingCtx = null;
 let whitingMode = false;
 let isWhitingDrawing = false;
 let lastWhitingPoint = null;
-let brushSize = 1;
+let brushSize = 2;
+let whitingHistory = [];
 
 function setBrushSize(v) {
   brushSize = Math.max(1, Math.min(60, v));
@@ -349,6 +351,7 @@ canvas.addEventListener('mousedown', (e) => {
   const rect = canvas.getBoundingClientRect();
   const p = canvasToImg(e.clientX - rect.left, e.clientY - rect.top);
   if (whitingMode && state.step >= 2) {
+    if (whitingCtx) { whitingHistory.push(whitingCtx.getImageData(0, 0, whitingCanvas.width, whitingCanvas.height)); if (whitingHistory.length > 30) whitingHistory.shift(); }
     isWhitingDrawing = true; lastWhitingPoint = p; drawWhitingDot(p); render(); return;
   }
   if (state.step >= 2) { const hit = hitTest(p); if (hit) { dragTarget = hit; canvas.style.cursor = 'grabbing'; return; } }
@@ -419,6 +422,7 @@ function initWhitingCanvas() {
   whitingCanvas = document.createElement('canvas');
   whitingCanvas.width = img.width; whitingCanvas.height = img.height;
   whitingCtx = whitingCanvas.getContext('2d');
+  whitingHistory = [];
 }
 
 function toggleWhiting() {
@@ -442,9 +446,22 @@ function drawWhitingLine(from, to) {
 function clearWhiting() {
   if (!whitingCtx) return;
   whitingCtx.clearRect(0, 0, whitingCanvas.width, whitingCanvas.height);
+  whitingHistory = [];
   document.getElementById('whitingPanel').classList.add('hidden');
   render();
 }
+
+function undoWhiting() {
+  if (!whitingCtx || whitingHistory.length === 0) return;
+  const snapshot = whitingHistory.pop();
+  whitingCtx.putImageData(snapshot, 0, 0);
+  analyzeWhiting();
+  render();
+}
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && whitingMode) { e.preventDefault(); undoWhiting(); }
+});
 
 function getCardRect() {
   if (!state.hLine || !state.vLine) return null;
