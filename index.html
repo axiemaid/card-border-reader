@@ -492,6 +492,7 @@ function drawGridLines() {
   ctx.beginPath();
   ctx.moveTo(x1s.x, topS.y); ctx.lineTo(x1s.x, botS.y);
   ctx.moveTo(x2s.x, topS.y); ctx.lineTo(x2s.x, botS.y);
+  ctx.stroke();
   const y1s = imgToCanvas(0, b.y1), y2s = imgToCanvas(0, b.y2);
   const leftS = imgToCanvas(b.left, 0), rightS = imgToCanvas(b.right, 0);
   ctx.beginPath();
