@@ -104,7 +104,7 @@
   <div class="brush-control" id="brushControl" style="display:none;">
     <button onclick="adjustBrush(-1)" style="padding:4px 8px;">−</button>
     <span class="info" id="brushSizeLabel">1</span>
-    <input type="range" id="brushSlider" min="1" max="60" value="1" oninput="setBrushSize(parseInt(this.value)">
+    <input type="range" id="brushSlider" min="1" max="60" value="1" oninput="setBrushSize(parseInt(this.value))">
     <button onclick="adjustBrush(1)" style="padding:4px 8px;">+</button>
     <button onclick="clearWhiting()" style="padding:4px 8px; margin-left:6px;">Clear</button>
   </div>
@@ -816,7 +816,6 @@ function resetMeasurements() {
   document.getElementById('btnExportCSV').disabled = true;
   document.getElementById('btnExportPNG').disabled = true;
   document.getElementById('btnWhiting').disabled = true;
-}
   if (whitingMode) toggleWhiting();
   updateHint('Click left edge, then right edge');
   updateStatusUI();
